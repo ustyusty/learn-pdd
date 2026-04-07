@@ -46,6 +46,25 @@
             justify-content: center;
             margin-top: 15px;
         }
+        
+        .upload-text-btn {
+            background: #4b4c4f;
+            margin-top: 5px;
+        }
+
+        /* Поле для ввода JSON */
+        #jsonTextInput {
+            width: 100%;
+            max-width: 340px;
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            box-sizing: border-box;
+            font-family: monospace;
+            font-size: 0.9em;
+            resize: vertical;
+        }
 
         /* Экран изучения */
         .header {
@@ -128,9 +147,15 @@
     <div id="menuView" class="active">
         <h2>Темы для изучения</h2>
         <div id="topicList"></div>
+        
         <input type="file" id="jsonUpload" accept=".json" style="display:none" onchange="handleFileUpload(event)">
         <button class="topic-btn upload-btn" onclick="document.getElementById('jsonUpload').click()">
-            + Загрузить свой JSON
+            📁 Загрузить файл JSON
+        </button>
+
+        <textarea id="jsonTextInput" rows="4" placeholder='Вставь текст JSON сюда...&#10;Пример:&#10;{"Новая тема": [{"term": "А", "def": "Б"}]}'></textarea>
+        <button class="topic-btn upload-btn upload-text-btn" onclick="loadJsonFromText()">
+            📝 Добавить из текста
         </button>
     </div>
 
@@ -156,7 +181,7 @@
     </div>
 
     <script>
-        // База данных по умолчанию (структура JSON)
+        // База данных по умолчанию
         let topicsData = {
             "Общие положения (База)": [
     { term: "Автомагистраль", def: "Дорога, обозначенная знаком 5.1. Имеет разделенные проезжие части и не имеет пересечений на одном уровне с другими дорогами, путями или пешеходными дорожками." },
@@ -198,6 +223,11 @@
     { term: "Тротуар", def: "Элемент дороги, предназначенный для движения пешеходов и примыкающий к проезжей части (или отделенный от нее газоном)." },
     { term: "Уступить дорогу", def: "Требование, означающее, что участник не должен начинать/продолжать движение, если это вынудит других (с преимуществом) изменить направление или скорость." }
 ],
+            "Остановка и Стоянка": [
+                { term: "Остановка", def: "До 5 минут (или больше, если нужно для посадки/погрузки)." },
+                { term: "Стоянка", def: "Более 5 минут по причинам, не связанным с пассажирами или грузом." },
+                { term: "Вынужденная остановка", def: "Прекращение движения из-за поломки, опасности груза или состояния водителя." }
+            ]
         };
 
         let activeDeck = [];
@@ -223,7 +253,6 @@
         }
 
         function startStudy(topicName) {
-            // Копируем массив карточек, чтобы не удалить оригинал
             activeDeck = JSON.parse(JSON.stringify(topicsData[topicName]));
             currentIndex = 0;
             
@@ -243,7 +272,7 @@
                 document.getElementById('cardFront').innerText = activeDeck[currentIndex].term;
                 document.getElementById('cardBack').innerText = activeDeck[currentIndex].def;
                 document.getElementById('progressText').innerText = 
-                    `Карточка: ${currentIndex + 1} / ${activeDeck.length} (Осталось выучить: ${activeDeck.length})`;
+                    `Карточка: ${currentIndex + 1} / ${activeDeck.length} (Осталось: ${activeDeck.length})`;
             }, 150);
         }
 
@@ -252,7 +281,6 @@
         }
 
         function markKnown() {
-            // Удаляем карточку из колоды
             activeDeck.splice(currentIndex, 1);
             
             if (activeDeck.length === 0) {
@@ -260,7 +288,6 @@
                 showMenu();
                 return;
             }
-            // Корректируем индекс, если удалили последнюю в массиве
             if (currentIndex >= activeDeck.length) {
                 currentIndex = 0;
             }
@@ -268,13 +295,11 @@
         }
 
         function markUnknown() {
-            // Оставляем в колоде, идем к следующей
             currentIndex = (currentIndex + 1) % activeDeck.length;
             updateCard();
         }
 
         function shuffleDeck() {
-            // Алгоритм Фишера-Йетса для рандомизации
             for (let i = activeDeck.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [activeDeck[i], activeDeck[j]] = [activeDeck[j], activeDeck[i]];
@@ -283,26 +308,44 @@
             updateCard();
         }
 
-        // --- ЗАГРУЗКА JSON ---
+        // --- ЗАГРУЗКА JSON (ФАЙЛ И ТЕКСТ) ---
         function handleFileUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
 
             const reader = new FileReader();
             reader.onload = function(e) {
-                try {
-                    const uploadedData = JSON.parse(e.target.result);
-                    // Добавляем загруженные темы в нашу базу
-                    Object.assign(topicsData, uploadedData);
-                    renderMenu();
-                    alert("Темы успешно загружены!");
-                } catch (error) {
-                    alert("Ошибка формата JSON. Проверьте файл.");
-                }
+                processJsonData(e.target.result);
             };
             reader.readAsText(file);
-            // Сбрасываем input, чтобы можно было загрузить тот же файл еще раз при необходимости
             event.target.value = ''; 
+        }
+
+        function loadJsonFromText() {
+            const textInput = document.getElementById('jsonTextInput');
+            const text = textInput.value.trim();
+            
+            if (!text) {
+                alert("Поле пустое. Вставь JSON текст перед добавлением.");
+                return;
+            }
+            
+            if (processJsonData(text)) {
+                textInput.value = ''; // Очищаем поле при успехе
+            }
+        }
+
+        function processJsonData(jsonString) {
+            try {
+                const uploadedData = JSON.parse(jsonString);
+                Object.assign(topicsData, uploadedData);
+                renderMenu();
+                alert("Новые темы успешно добавлены!");
+                return true;
+            } catch (error) {
+                alert("Ошибка формата JSON. Убедись, что все скобки и кавычки стоят правильно.");
+                return false;
+            }
         }
 
         // Инициализация при загрузке
