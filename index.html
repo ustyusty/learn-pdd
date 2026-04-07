@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ПДД Тренажер</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background-color: #f0f2f5; 
+            margin: 0; 
+            padding: 20px; 
+            color: #1c1e21;
+            touch-action: manipulation;
+        }
+        
+        h2 { text-align: center; margin-bottom: 20px; }
+
+        /* Экраны */
+        #menuView, #studyView { display: none; flex-direction: column; align-items: center; }
+        #menuView.active, #studyView.active { display: flex; }
+
+        /* Меню тем */
+        .topic-btn {
+            width: 100%;
+            max-width: 340px;
+            background: white;
+            border: none;
+            padding: 18px;
+            margin-bottom: 10px;
+            border-radius: 12px;
+            font-size: 1.1em;
+            font-weight: 600;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            cursor: pointer;
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+        }
+        .topic-btn:active { background: #f0f0f0; }
+
+        .upload-btn {
+            background: #2e89ff;
+            color: white;
+            text-align: center;
+            justify-content: center;
+            margin-top: 15px;
+        }
+
+        /* Экран изучения */
+        .header {
+            width: 100%;
+            max-width: 340px;
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .header button {
+            background: #e4e6eb;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        /* Карточка */
+        .card-container { 
+            width: 100%; 
+            max-width: 340px; 
+            height: 250px; 
+            perspective: 1000px; 
+            cursor: pointer; 
+        }
+        .card-inner { 
+            width: 100%; 
+            height: 100%; 
+            transition: transform 0.5s cubic-bezier(0.4, 0.2, 0.2, 1); 
+            transform-style: preserve-3d; 
+            position: relative; 
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            border-radius: 16px;
+        }
+        .card-container.flipped .card-inner { transform: rotateY(180deg); }
+        .card-front, .card-back { 
+            width: 100%; 
+            height: 100%; 
+            backface-visibility: hidden; 
+            position: absolute; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            padding: 24px; 
+            box-sizing: border-box; 
+            border-radius: 16px; 
+            text-align: center; 
+        }
+        .card-front { background-color: #ffffff; font-size: 1.4em; font-weight: 600; }
+        .card-back { background-color: #2e89ff; color: white; transform: rotateY(180deg); font-size: 1.1em; line-height: 1.4; overflow-y: auto;}
+
+        /* Управление */
+        .progress { margin: 20px 0; color: #65676b; font-weight: 600; }
+        .controls { 
+            display: flex; 
+            gap: 15px; 
+            width: 100%;
+            max-width: 340px;
+        }
+        .controls button {
+            flex: 1;
+            padding: 18px; 
+            font-size: 1.1em; 
+            font-weight: bold;
+            border: none; 
+            border-radius: 12px; 
+            color: white;
+            cursor: pointer; 
+        }
+        .btn-bad { background-color: #ff4b4b; }
+        .btn-bad:active { background-color: #d63d3d; }
+        .btn-good { background-color: #31a24c; }
+        .btn-good:active { background-color: #28853e; }
+
+    </style>
+</head>
+<body>
+
+    <div id="menuView" class="active">
+        <h2>Темы для изучения</h2>
+        <div id="topicList"></div>
+        <input type="file" id="jsonUpload" accept=".json" style="display:none" onchange="handleFileUpload(event)">
+        <button class="topic-btn upload-btn" onclick="document.getElementById('jsonUpload').click()">
+            + Загрузить свой JSON
+        </button>
+    </div>
+
+    <div id="studyView">
+        <div class="header">
+            <button onclick="showMenu()">← Выход</button>
+            <button onclick="shuffleDeck()">🔀 Перемешать</button>
+        </div>
+        
+        <div class="card-container" id="flashcard" onclick="flipCard()">
+            <div class="card-inner" id="cardInner">
+                <div class="card-front" id="cardFront">Термин</div>
+                <div class="card-back" id="cardBack">Определение</div>
+            </div>
+        </div>
+        
+        <div class="progress" id="progressText">1 / 1 (Осталось: 1)</div>
+        
+        <div class="controls">
+            <button class="btn-bad" onclick="markUnknown()">❌ Не знаю</button>
+            <button class="btn-good" onclick="markKnown()">✅ Знаю</button>
+        </div>
+    </div>
+
+    <script>
+        // База данных по умолчанию (структура JSON)
+        let topicsData = {
+            "Общие положения (База)": [
+    { term: "Автомагистраль", def: "Дорога, обозначенная знаком 5.1. Имеет разделенные проезжие части и не имеет пересечений на одном уровне с другими дорогами, путями или пешеходными дорожками." },
+    { term: "Автопоезд", def: "Механическое транспортное средство, сцепленное с прицепом (прицепами)." },
+    { term: "Велосипед", def: "Транспортное средство (кроме инвалидных колясок), имеющее по крайней мере два колеса и приводимое в движение мускульной энергией." },
+    { term: "Водитель", def: "Лицо, управляющее каким-либо ТС, погонщик, ведущий по дороге животных. К водителю приравнивается обучающий вождению." },
+    { term: "Вынужденная остановка", def: "Прекращение движения ТС из-за его технической неисправности, опасности груза, состояния водителя (пассажира) или препятствия на дороге." },
+    { term: "Главная дорога", def: "Дорога, обозначенная знаками приоритета (2.1, 2.3.1-2.3.7, 5.1) или дорога с твердым покрытием по отношению к грунтовой." },
+    { term: "Дневные ходовые огни", def: "Внешние световые приборы, предназначенные для улучшения видимости движущегося ТС спереди в светлое время суток." },
+    { term: "Дорога", def: "Обустроенная полоса земли или сооружение для движения ТС. Включает проезжие части, трамвайные пути, тротуары, обочины и разделительные полосы." },
+    { term: "ДТП", def: "Событие, возникшее в процессе движения по дороге ТС и с его участием, при котором погибли/ранены люди, повреждены ТС или грузы." },
+    { term: "Железнодорожный переезд", def: "Пересечение дороги с железнодорожными путями на одном уровне." },
+    { term: "Маршрутное ТС", def: "ТС общего пользования (автобус, троллейбус, трамвай), едущее по установленному маршруту с обозначенными остановками." },
+    { term: "Механическое ТС", def: "Транспортное средство, приводимое в движение двигателем. (Термин не распространяется на велосипеды и СИМ)." },
+    { term: "Мопед", def: "ТС с двигателем до 50 куб. см (или электромотором 0,25 - 4 кВт), максимальная скорость которого не превышает 50 км/ч." },
+    { term: "Мотоцикл", def: "Двухколесное механическое ТС. Рабочий объем двигателя более 50 куб. см или скорость превышает 50 км/ч." },
+    { term: "Населенный пункт", def: "Застроенная территория, въезды на которую и выезды с которой обозначены специальными знаками (5.23.1-5.26)." },
+    { term: "Недостаточная видимость", def: "Видимость дороги менее 300 м в условиях тумана, дождя, снегопада, а также в сумерки." },
+    { term: "Ограниченная видимость", def: "Видимость водителем дороги, ограниченная рельефом местности, геометрией дороги, строениями или ТС." },
+    { term: "Обгон", def: "Опережение одного или нескольких ТС, связанное с выездом на полосу (сторону проезжей части) встречного движения." },
+    { term: "Обочина", def: "Элемент дороги, примыкающий непосредственно к проезжей части, отличающийся типом покрытия или выделенный разметкой 1.2." },
+    { term: "Опережение", def: "Движение ТС со скоростью, большей скорости попутного транспортного средства (без выезда на встречную полосу)." },
+    { term: "Остановка", def: "Преднамеренное прекращение движения на время до 5 минут, а также на большее, если это необходимо для посадки/высадки или загрузки/разгрузки." },
+    { term: "Пассажир", def: "Лицо, кроме водителя, находящееся в ТС (на нем), а также лицо, которое садится в ТС или выходит из него." },
+    { term: "Перекресток", def: "Место пересечения, примыкания или разветвления дорог на одном уровне. Выезды с прилегающих территорий перекрестками не считаются." },
+    { term: "Перестроение", def: "Выезд из занимаемой полосы или занимаемого ряда с сохранением первоначального направления движения." },
+    { term: "Пешеход", def: "Лицо, находящееся вне ТС на дороге. К ним приравниваются лица на роликах, самокатах, в инвалидных колясках и ведущие велосипед/мопед." },
+    { term: "Пешеходный переход", def: "Участок проезжей части, трамвайных путей, обозначенный знаками 5.19.1, 5.19.2 или разметкой, для движения пешеходов." },
+    { term: "Полоса движения", def: "Любая из продольных полос проезжей части, имеющая ширину, достаточную для движения автомобилей в один ряд." },
+    { term: "Преимущество (приоритет)", def: "Право на первоочередное движение в намеченном направлении по отношению к другим участникам движения." },
+    { term: "Препятствие", def: "Неподвижный объект на полосе (сломанное авто, дефект дороги). Затор или ТС, остановившееся по Правилам, препятствием не являются." },
+    { term: "Прилегающая территория", def: "Территория, непосредственно прилегающая к дороге и не предназначенная для сквозного движения ТС (дворы, АЗС, автостоянки)." },
+    { term: "Прицеп", def: "Транспортное средство, не оборудованное двигателем и предназначенное для движения в составе с механическим ТС." },
+    { term: "Проезжая часть", def: "Элемент дороги, предназначенный для движения безрельсовых транспортных средств." },
+    { term: "Разделительная полоса", def: "Элемент дороги, разделяющий смежные проезжие части и не предназначенный для движения и остановки ТС." },
+    { term: "Средство индивидуальной мобильности (СИМ)", def: "ТС с одним или несколькими колесами (роликами) с двигателем: электросамокаты, гироскутеры, моноколеса и т.п." },
+    { term: "Стоянка", def: "Преднамеренное прекращение движения ТС на время более 5 минут по причинам, не связанным с пассажирами или грузом." },
+    { term: "Темное время суток", def: "Промежуток времени от конца вечерних сумерек до начала утренних сумерек." },
+    { term: "Тротуар", def: "Элемент дороги, предназначенный для движения пешеходов и примыкающий к проезжей части (или отделенный от нее газоном)." },
+    { term: "Уступить дорогу", def: "Требование, означающее, что участник не должен начинать/продолжать движение, если это вынудит других (с преимуществом) изменить направление или скорость." }
+],
+        };
+
+        let activeDeck = [];
+        let currentIndex = 0;
+
+        // --- ЛОГИКА ИНТЕРФЕЙСА ---
+        function renderMenu() {
+            const list = document.getElementById('topicList');
+            list.innerHTML = '';
+            for (let topicName in topicsData) {
+                const btn = document.createElement('button');
+                btn.className = 'topic-btn';
+                btn.innerHTML = `<span>${topicName}</span> <span>${topicsData[topicName].length} шт.</span>`;
+                btn.onclick = () => startStudy(topicName);
+                list.appendChild(btn);
+            }
+        }
+
+        function showMenu() {
+            document.getElementById('studyView').classList.remove('active');
+            document.getElementById('menuView').classList.add('active');
+            renderMenu();
+        }
+
+        function startStudy(topicName) {
+            // Копируем массив карточек, чтобы не удалить оригинал
+            activeDeck = JSON.parse(JSON.stringify(topicsData[topicName]));
+            currentIndex = 0;
+            
+            if (activeDeck.length === 0) return alert("Тема пуста!");
+            
+            document.getElementById('menuView').classList.remove('active');
+            document.getElementById('studyView').classList.add('active');
+            updateCard();
+        }
+
+        // --- ЛОГИКА КАРТОЧЕК ---
+        function updateCard() {
+            const flashcard = document.getElementById('flashcard');
+            flashcard.classList.remove('flipped');
+            
+            setTimeout(() => {
+                document.getElementById('cardFront').innerText = activeDeck[currentIndex].term;
+                document.getElementById('cardBack').innerText = activeDeck[currentIndex].def;
+                document.getElementById('progressText').innerText = 
+                    `Карточка: ${currentIndex + 1} / ${activeDeck.length} (Осталось выучить: ${activeDeck.length})`;
+            }, 150);
+        }
+
+        function flipCard() {
+            document.getElementById('flashcard').classList.toggle('flipped');
+        }
+
+        function markKnown() {
+            // Удаляем карточку из колоды
+            activeDeck.splice(currentIndex, 1);
+            
+            if (activeDeck.length === 0) {
+                alert("🎉 Поздравляю! Тема полностью выучена!");
+                showMenu();
+                return;
+            }
+            // Корректируем индекс, если удалили последнюю в массиве
+            if (currentIndex >= activeDeck.length) {
+                currentIndex = 0;
+            }
+            updateCard();
+        }
+
+        function markUnknown() {
+            // Оставляем в колоде, идем к следующей
+            currentIndex = (currentIndex + 1) % activeDeck.length;
+            updateCard();
+        }
+
+        function shuffleDeck() {
+            // Алгоритм Фишера-Йетса для рандомизации
+            for (let i = activeDeck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [activeDeck[i], activeDeck[j]] = [activeDeck[j], activeDeck[i]];
+            }
+            currentIndex = 0;
+            updateCard();
+        }
+
+        // --- ЗАГРУЗКА JSON ---
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const uploadedData = JSON.parse(e.target.result);
+                    // Добавляем загруженные темы в нашу базу
+                    Object.assign(topicsData, uploadedData);
+                    renderMenu();
+                    alert("Темы успешно загружены!");
+                } catch (error) {
+                    alert("Ошибка формата JSON. Проверьте файл.");
+                }
+            };
+            reader.readAsText(file);
+            // Сбрасываем input, чтобы можно было загрузить тот же файл еще раз при необходимости
+            event.target.value = ''; 
+        }
+
+        // Инициализация при загрузке
+        renderMenu();
+    </script>
+</body>
+</html>
